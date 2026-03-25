@@ -10,3 +10,4 @@ export const kConfig = process.env.CMAKE_BUILD_TYPE ?? 'Release';
 export const isMac = process.platform === 'darwin';
 export const isWin = process.platform === 'win32';
 export const isLinux = process.platform === 'linux';
+export const isArm64 = process.arch === 'arm64';
