@@ -60,6 +60,8 @@ async function createProject() {
       '-DCMAKE_CXX_VISIBILITY_PRESET=hidden',
       '-DCMAKE_VISIBILITY_INLINES_HIDDEN=1',
       ...addElemIf(isArm64 && !isMac, '-DDAWN_ENABLE_PIC=ON'),
+      ...addElemIf(isArm64 && !isMac, '-DCMAKE_C_FLAGS=-fPIC'),
+      ...addElemIf(isArm64 && !isMac, '-DCMAKE_CXX_FLAGS=-fPIC'),
       ...addElemIf(isMac, '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"'),
       ...addElemIf(isWin, '-DCMAKE_SYSTEM_VERSION=10.0.26100.0'),
       ...addElemIf(isMac, '-DCMAKE_OSX_SYSROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'),
