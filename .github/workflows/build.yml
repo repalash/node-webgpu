@@ -20,21 +20,22 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        - {
-            name: "Windows Latest MSVC",
-            os: windows-latest,
-            artifact: win32-x64,
-          }
-        - {
-            name: "Ubuntu_22_GCC",
-            os: ubuntu-22.04,
-            artifact: linux-x64,
-          }
-        - {
-            name: "Ubuntu_24_ARM64",
-            os: ubuntu-24.04-arm,
-            artifact: linux-arm64,
-          }
+        # TEMP: non-Alpine builds commented out while iterating on Alpine CI.
+        # - {
+        #     name: "Windows Latest MSVC",
+        #     os: windows-latest,
+        #     artifact: win32-x64,
+        #   }
+        # - {
+        #     name: "Ubuntu_22_GCC",
+        #     os: ubuntu-22.04,
+        #     artifact: linux-x64,
+        #   }
+        # - {
+        #     name: "Ubuntu_24_ARM64",
+        #     os: ubuntu-24.04-arm,
+        #     artifact: linux-arm64,
+        #   }
         - {
             name: "Alpine_X64",
             os: ubuntu-22.04,
@@ -49,11 +50,11 @@ jobs:
             alpine: true,
             arch: aarch64,
           }
-        - {
-            name: "macOS Latest Clang",
-            os: macos-latest,
-            artifact: darwin-universal,
-          }
+        # - {
+        #     name: "macOS Latest Clang",
+        #     os: macos-latest,
+        #     artifact: darwin-universal,
+        #   }
 
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
