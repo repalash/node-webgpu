@@ -58,6 +58,14 @@ jobs:
         #   }
 
     steps:
+      # Alpine ARM64 workaround: JS Actions (checkout, upload-artifact) don't
+      # work in Alpine containers on arm64 runners. This action installs a
+      # modified gcompat and masks Alpine in /etc/os-release.
+      # https://github.com/laverdet/alpine-arm64
+      - name: Enable JS Actions in Alpine ARM64
+        if: ${{ matrix.config.alpine && matrix.config.os == 'ubuntu-24.04-arm' }}
+        uses: laverdet/alpine-arm64@v1
+
       # node:20-alpine has no git — install it before actions/checkout.
       - name: Install git (Alpine)
         if: ${{ matrix.config.alpine }}
@@ -124,9 +132,13 @@ jobs:
         if: ${{ matrix.config.alpine }}
         shell: sh
         run: |
+          # GNU wget replaces BusyBox wget (which lacks --waitretry, -w, etc.).
+          # depot_tools' gclient sync calls wget with GNU options to fetch
+          # Dawn sysroots from Google Storage.
+          # https://github.com/dotnet/install-scripts/issues/216
           apk add --no-cache \
             build-base cmake ninja-build go \
-            python3 py3-pip py3-httplib2 \
+            python3 py3-pip py3-httplib2 wget \
             libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev \
             libx11-dev libxcb-dev pkgconf git bash \
             mesa-vulkan-swrast vulkan-loader
