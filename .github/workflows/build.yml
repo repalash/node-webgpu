@@ -16,6 +16,7 @@ jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    container: ${{ matrix.config.container }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,12 +42,14 @@ jobs:
             os: ubuntu-22.04,
             artifact: linux-x64-musl,
             alpine: true,
+            container: "node:20-alpine3.23",
           }
         - {
             name: "Alpine_ARM64",
             os: ubuntu-24.04-arm,
             artifact: linux-arm64-musl,
             alpine: true,
+            container: "node:20-alpine3.23",
           }
         # - {
         #     name: "macOS Latest Clang",
@@ -55,6 +58,12 @@ jobs:
         #   }
 
     steps:
+      # node:20-alpine has no git — install it before actions/checkout.
+      - name: Install git (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: sh
+        run: apk add --no-cache git
+
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,58 +120,56 @@ jobs:
           brew install cmake
           cmake --version
 
-      - name: Build (Alpine via Docker)
+      - name: Install dependencies on alpine
         if: ${{ matrix.config.alpine }}
+        shell: sh
         run: |
-          # Runs the build inside alpine:3.23. Docker pulls the image matching
-          # the host arch (linux/amd64 on ubuntu-22.04, linux/arm64 on
-          # ubuntu-24.04-arm) so the resulting dawn.node is native to the host.
-          docker run --rm \
-            -v "$PWD:/work" -w /work \
-            -e VPYTHON_BYPASS="manually managed python not supported by chrome operations" \
-            -e DEPOT_TOOLS_UPDATE=0 \
-            -e DEPOT_TOOLS_WIN_TOOLCHAIN=0 \
-            alpine:3.23 \
-            sh -e <<'DOCKER_EOF'
-              apk add --no-cache \
-                build-base cmake ninja-build go nodejs npm \
-                python3 py3-pip py3-httplib2 \
-                libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev \
-                libx11-dev libxcb-dev pkgconf git bash \
-                mesa-vulkan-swrast vulkan-loader
+          apk add --no-cache \
+            build-base cmake ninja-build go \
+            python3 py3-pip py3-httplib2 \
+            libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev \
+            libx11-dev libxcb-dev pkgconf git bash \
+            mesa-vulkan-swrast vulkan-loader
 
-              # Alpine's py3-httplib2 package is missing the socks submodule.
-              # depot_tools imports it; shim via PySocks.
-              pip3 install --break-system-packages PySocks
-              PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
-              printf 'from socks import *\n' > "$PY_SITE/httplib2/socks.py"
+          # Alpine's py3-httplib2 package is missing the socks submodule.
+          # depot_tools imports it; shim via PySocks.
+          pip3 install --break-system-packages PySocks
+          PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
+          printf 'from socks import *\n' > "$PY_SITE/httplib2/socks.py"
 
-              # Alpine puts ninja under /usr/lib/ninja-build/bin, not on PATH by default.
-              export PATH=/usr/lib/ninja-build/bin:$PATH
+          cmake --version
+          gcc --version
+          node --version
+          go version
 
-              # Repo was cloned by the host user; allow git inside the container.
-              git config --global --add safe.directory /work
-              git config --global --add safe.directory '*'
+      - name: Build (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: sh
+        env:
+          # depot_tools ships glibc-linked python binaries; use system python3.
+          VPYTHON_BYPASS: "manually managed python not supported by chrome operations"
+          DEPOT_TOOLS_UPDATE: "0"
+          DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+        run: |
+          # Alpine puts ninja under /usr/lib/ninja-build/bin, not on PATH by default.
+          export PATH=/usr/lib/ninja-build/bin:$PATH
 
-              cmake --version
-              gcc --version
-              node --version
-              go version
+          # Workspace was checked out as a different user; allow git inside the container.
+          git config --global --add safe.directory '*'
 
-              npm ci
+          npm ci
 
-              # Initialize submodules up-front so we can patch depot_tools
-              # before gclient sync runs.
-              git submodule update --init
+          # Initialize submodules up-front so we can patch depot_tools
+          # before gclient sync runs.
+          git submodule update --init
 
-              # git >= 2.52 rejects `git config --local` outside a work tree.
-              # gclient's set_config decorator triggers this during sync. The
-              # decorator only writes advisory local configs (blame.ignoreRevsFile,
-              # fetch.recurseSubmodules=off, etc.) — safe to disable for a CI build.
-              sed -i 's/^    @set_config$//' third_party/depot_tools/gclient_scm.py
+          # git >= 2.52 rejects `git config --local` outside a work tree.
+          # gclient's set_config decorator triggers this during sync. The
+          # decorator only writes advisory local configs (blame.ignoreRevsFile,
+          # fetch.recurseSubmodules=off, etc.) — safe to disable for a CI build.
+          sed -i 's/^    @set_config$//' third_party/depot_tools/gclient_scm.py
 
-              npm run build
-          DOCKER_EOF
+          npm run build
 
       - name: Build
         if: ${{ !matrix.config.alpine }}
