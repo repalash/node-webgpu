@@ -36,6 +36,20 @@ jobs:
             artifact: linux-arm64,
           }
         - {
+            name: "Alpine_X64",
+            os: ubuntu-22.04,
+            artifact: linux-x64-musl,
+            alpine: true,
+            arch: x86_64,
+          }
+        - {
+            name: "Alpine_ARM64",
+            os: ubuntu-24.04-arm,
+            artifact: linux-arm64-musl,
+            alpine: true,
+            arch: aarch64,
+          }
+        - {
             name: "macOS Latest Clang",
             os: macos-latest,
             artifact: darwin-universal,
@@ -49,11 +63,13 @@ jobs:
           persist-credentials: false
 
       - name: Use Node.js
+        if: ${{ !matrix.config.alpine }}
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Use Go
+        if: ${{ !matrix.config.alpine }}
         uses: actions/setup-go@v5
         with:
           go-version: '1.21.3'
@@ -96,14 +112,103 @@ jobs:
           brew install cmake
           cmake --version
 
+      - name: Set up Alpine chroot
+        if: ${{ matrix.config.alpine }}
+        uses: jirutka/setup-alpine@v1
+        with:
+          branch: v3.23
+          arch: ${{ matrix.config.arch }}
+          packages: >
+            build-base cmake ninja-build go nodejs npm python3 py3-httplib2
+            libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev
+            libx11-dev libxcb-dev pkgconf git bash
+            mesa-vulkan-swrast vulkan-loader
+
+      - name: Install Alpine build prerequisites
+        if: ${{ matrix.config.alpine }}
+        shell: alpine.sh --root {0}
+        run: |
+          # depot_tools bundles a glibc python; force system python via VPYTHON_BYPASS (set at build time).
+          # Alpine's httplib2 package is missing the socks submodule — install PySocks and shim it.
+          pip3 install --break-system-packages PySocks || pip3 install --break-system-packages --user PySocks
+          PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
+          printf 'from socks import *\n' > "$PY_SITE/httplib2/socks.py"
+
+          # Ninja is installed to a non-standard path on Alpine.
+          echo 'export PATH=/usr/lib/ninja-build/bin:$PATH' >> /etc/profile.d/ninja.sh
+
+          cmake --version
+          gcc --version
+          node --version
+          go version
+
+      - name: Build (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: alpine.sh {0}
+        env:
+          VPYTHON_BYPASS: "manually managed python not supported by chrome operations"
+          DEPOT_TOOLS_UPDATE: "0"
+          DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+        run: |
+          export PATH=/usr/lib/ninja-build/bin:$PATH
+
+          npm ci
+
+          # Initialize submodules up-front so we can patch depot_tools
+          # before gclient sync runs.
+          git submodule update --init
+
+          # git >= 2.52 rejects `git config --local` outside a work tree.
+          # gclient's post-checkout config decorator hits this on fresh clones.
+          # Make the failure non-fatal so gclient sync can proceed.
+          GCLIENT_SCM=third_party/depot_tools/gclient_scm.py
+          if [ -f "$GCLIENT_SCM" ] && grep -q "fetch.recurseSubmodules" "$GCLIENT_SCM"; then
+            python3 - "$GCLIENT_SCM" <<'PY'
+          import re, sys
+          fn = sys.argv[1]
+          src = open(fn).read()
+          marker = "git -c color.ui=never config --local"
+          if "_GCLIENT_ALPINE_PATCH_APPLIED" in src or marker not in src:
+              print("gclient_scm.py: no patch needed or structure changed; leaving unchanged")
+              sys.exit(0)
+          # Wrap every call to _run_config* in try/except so local-config failures don't abort sync.
+          patched = src.replace(
+              "def _CheckSafeForGitConfigCall(",
+              "# _GCLIENT_ALPINE_PATCH_APPLIED\ndef _CheckSafeForGitConfigCall(",
+          )
+          patched = re.sub(
+              r"(subprocess2\.check_call\(\['git',\s*'-c',\s*'color\.ui=never',\s*'config',\s*'--local',[^\)]*\]\s*,[^\)]*\))",
+              r"try:\n    \1\nexcept Exception as _e:\n    import logging; logging.warning('git config --local failed (non-fatal): %s', _e)",
+              patched,
+          )
+          if patched == src:
+              print("gclient_scm.py: pattern not matched; build may fail on git config step")
+              sys.exit(0)
+          open(fn, "w").write(patched)
+          print("gclient_scm.py: patched local-config calls")
+          PY
+          fi
+
+          npm run build
+
       - name: Build
+        if: ${{ !matrix.config.alpine }}
         shell: bash
         run: |
           npm ci
           echo "${{ github.event_name }}"
           npm run build
 
+      - name: Test (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: alpine.sh {0}
+        env:
+          WEBGPU_USE_CI_AVAILABLE_RENDERER: "1"
+        run: |
+          npm test
+
       - name: Test
+        if: ${{ !matrix.config.alpine }}
         shell: bash
         env:
           WEBGPU_USE_CI_AVAILABLE_RENDERER: "1"
