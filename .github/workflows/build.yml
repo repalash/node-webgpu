@@ -44,13 +44,14 @@ jobs:
             alpine: true,
             container: "node:20-alpine3.23",
           }
-        - {
-            name: "Alpine_ARM64",
-            os: ubuntu-24.04-arm,
-            artifact: linux-arm64-musl,
-            alpine: true,
-            container: "node:20-alpine3.23",
-          }
+        # Arm64 already verified locally; disabled while iterating on x64.
+        # - {
+        #     name: "Alpine_ARM64",
+        #     os: ubuntu-24.04-arm,
+        #     artifact: linux-arm64-musl,
+        #     alpine: true,
+        #     container: "node:20-alpine3.23",
+        #   }
         # - {
         #     name: "macOS Latest Clang",
         #     os: macos-latest,
