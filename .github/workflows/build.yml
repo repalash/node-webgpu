@@ -136,9 +136,15 @@ jobs:
           # depot_tools' gclient sync calls wget with GNU options to fetch
           # Dawn sysroots from Google Storage.
           # https://github.com/dotnet/install-scripts/issues/216
+          #
+          # GNU tar replaces BusyBox tar (which doesn't auto-detect .xz).
+          # Chromium's install-sysroot.py runs `tar mxf sysroot.tar.xz`
+          # without -J, which GNU tar auto-detects and BusyBox tar does not,
+          # giving "tar: short read" / "tar: corrupted data".
+          # https://gitlab.alpinelinux.org/alpine/aports/-/issues/16796
           apk add --no-cache \
             build-base cmake ninja-build go \
-            python3 py3-pip py3-httplib2 wget \
+            python3 py3-pip py3-httplib2 wget tar xz \
             libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev \
             libx11-dev libxcb-dev pkgconf git bash \
             mesa-vulkan-swrast vulkan-loader
