@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import {familySync, MUSL} from 'detect-libc';
 
 import {execute} from './execute.js';
 import {
@@ -18,6 +19,8 @@ import {
   isMac,
   isWin,
 } from './constants.js';
+
+const isArm64 = process.arch === 'arm64';
 
 prependPathIfItExists(kDepotToolsPath);
 appendPathIfItExists('/Applications/CMake.app/Contents/bin');
@@ -58,6 +61,9 @@ async function createProject() {
       `-DCMAKE_BUILD_TYPE=${kConfig}`,
       '-DCMAKE_CXX_VISIBILITY_PRESET=hidden',
       '-DCMAKE_VISIBILITY_INLINES_HIDDEN=1',
+      ...addElemIf(isArm64 && !isMac, '-DDAWN_ENABLE_PIC=ON'),
+      ...addElemIf(isArm64 && !isMac, '-DCMAKE_C_FLAGS=-fPIC'),
+      ...addElemIf(isArm64 && !isMac, '-DCMAKE_CXX_FLAGS=-fPIC'),
       ...addElemIf(isMac, '-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"'),
       ...addElemIf(isWin, '-DCMAKE_SYSTEM_VERSION=10.0.26100.0'),
       ...addElemIf(isMac, '-DCMAKE_OSX_SYSROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'),
@@ -77,7 +83,8 @@ async function main() {
   const compileOnly = process.argv[2] === '--compile-only';
   try {
     const arch = isMac ? 'universal' : process.arch;
-    const target = `${process.platform}-${arch}`;
+    const libcSuffix = (!isMac && familySync() === MUSL) ? '-musl' : '';
+    const target = `${process.platform}-${arch}${libcSuffix}`;
     console.log('building for:', target);
     if (!compileOnly) {
       await execute('git', ['submodule', 'update', '--init']);

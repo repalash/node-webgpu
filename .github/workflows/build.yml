@@ -16,6 +16,7 @@ jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    container: ${{ matrix.config.container }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,12 +37,40 @@ jobs:
             artifact: linux-arm64,
           }
         - {
+            name: "Alpine_X64",
+            os: ubuntu-22.04,
+            artifact: linux-x64-musl,
+            alpine: true,
+            container: "node:20-alpine3.23",
+          }
+        - {
+            name: "Alpine_ARM64",
+            os: ubuntu-24.04-arm,
+            artifact: linux-arm64-musl,
+            alpine: true,
+            container: "node:20-alpine3.23",
+          }
+        - {
             name: "macOS Latest Clang",
             os: macos-latest,
             artifact: darwin-universal,
           }
 
     steps:
+      # Alpine ARM64 workaround: JS Actions (checkout, upload-artifact) don't
+      # work in Alpine containers on arm64 runners. This action installs a
+      # modified gcompat and masks Alpine in /etc/os-release.
+      # https://github.com/laverdet/alpine-arm64
+      - name: Enable JS Actions in Alpine ARM64
+        if: ${{ matrix.config.alpine && matrix.config.os == 'ubuntu-24.04-arm' }}
+        uses: laverdet/alpine-arm64@v1
+
+      # node:20-alpine has no git — install it before actions/checkout.
+      - name: Install git (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: sh
+        run: apk add --no-cache git
+
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,11 +78,13 @@ jobs:
           persist-credentials: false
 
       - name: Use Node.js
+        if: ${{ !matrix.config.alpine }}
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Use Go
+        if: ${{ !matrix.config.alpine }}
         uses: actions/setup-go@v5
         with:
           go-version: '1.21.3'
@@ -96,7 +127,69 @@ jobs:
           brew install cmake
           cmake --version
 
+      - name: Install dependencies on alpine
+        if: ${{ matrix.config.alpine }}
+        shell: sh
+        run: |
+          # GNU wget replaces BusyBox wget (which lacks --waitretry, -w, etc.).
+          # depot_tools' gclient sync calls wget with GNU options to fetch
+          # Dawn sysroots from Google Storage.
+          # https://github.com/dotnet/install-scripts/issues/216
+          #
+          # GNU tar replaces BusyBox tar (which doesn't auto-detect .xz).
+          # Chromium's install-sysroot.py runs `tar mxf sysroot.tar.xz`
+          # without -J, which GNU tar auto-detects and BusyBox tar does not,
+          # giving "tar: short read" / "tar: corrupted data".
+          # https://gitlab.alpinelinux.org/alpine/aports/-/issues/16796
+          apk add --no-cache \
+            build-base cmake ninja-build go \
+            python3 py3-pip py3-httplib2 wget tar xz \
+            libxrandr-dev libxinerama-dev libxcursor-dev mesa-dev \
+            libx11-dev libxcb-dev pkgconf git bash \
+            mesa-vulkan-swrast vulkan-loader
+
+          # Alpine's py3-httplib2 package is missing the socks submodule.
+          # depot_tools imports it; shim via PySocks.
+          pip3 install --break-system-packages PySocks
+          PY_SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
+          printf 'from socks import *\n' > "$PY_SITE/httplib2/socks.py"
+
+          cmake --version
+          gcc --version
+          node --version
+          go version
+
+      - name: Build (Alpine)
+        if: ${{ matrix.config.alpine }}
+        shell: sh
+        env:
+          # depot_tools ships glibc-linked python binaries; use system python3.
+          VPYTHON_BYPASS: "manually managed python not supported by chrome operations"
+          DEPOT_TOOLS_UPDATE: "0"
+          DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+        run: |
+          # Alpine puts ninja under /usr/lib/ninja-build/bin, not on PATH by default.
+          export PATH=/usr/lib/ninja-build/bin:$PATH
+
+          # Workspace was checked out as a different user; allow git inside the container.
+          git config --global --add safe.directory '*'
+
+          npm ci
+
+          # Initialize submodules up-front so we can patch depot_tools
+          # before gclient sync runs.
+          git submodule update --init
+
+          # git >= 2.52 rejects `git config --local` outside a work tree.
+          # gclient's set_config decorator triggers this during sync. The
+          # decorator only writes advisory local configs (blame.ignoreRevsFile,
+          # fetch.recurseSubmodules=off, etc.) — safe to disable for a CI build.
+          sed -i 's/^    @set_config$//' third_party/depot_tools/gclient_scm.py
+
+          npm run build
+
       - name: Build
+        if: ${{ !matrix.config.alpine }}
         shell: bash
         run: |
           npm ci
@@ -104,6 +197,7 @@ jobs:
           npm run build
 
       - name: Test
+        if: ${{ !matrix.config.alpine }}
         shell: bash
         env:
           WEBGPU_USE_CI_AVAILABLE_RENDERER: "1"
@@ -141,6 +235,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 24
+        registry-url: 'https://registry.npmjs.org'
 
     - name: Print env
       run: |
