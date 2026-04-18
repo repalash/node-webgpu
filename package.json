@@ -1,7 +1,7 @@
 {
-  "name": "webgpu",
-  "version": "0.4.0",
-  "description": "WebGPU for node",
+  "name": "@repalash/webgpu",
+  "version": "0.4.10001",
+  "description": "WebGPU for Node — fork of dawn-gpu/node-webgpu `webgpu` with Alpine/musl binaries",
   "main": "index.js",
   "type": "module",
   "types": "types.d.ts",
@@ -15,18 +15,23 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dawn-gpu/node-webgpu.git"
+    "url": "git+https://github.com/repalash/node-webgpu.git"
   },
   "keywords": [
     "WGSL",
-    "WebGPU"
+    "WebGPU",
+    "alpine",
+    "musl"
   ],
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/dawn-gpu/node-webgpu/issues"
+    "url": "https://github.com/repalash/node-webgpu/issues"
   },
-  "homepage": "https://github.com/dawn-gpu/node-webgpu#readme",
+  "homepage": "https://github.com/repalash/node-webgpu#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist/**/*",
     "build/**/*",

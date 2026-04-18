@@ -1,5 +1,8 @@
 # webgpu - dawn.node
 
+> Fork of upstream [`webgpu`](https://www.npmjs.com/package/webgpu) that adds Alpine/musl binaries. Published as [`@repalash/webgpu`](https://www.npmjs.com/package/@repalash/webgpu).
+> Use as drop-in via npm alias: `"webgpu": "npm:@repalash/webgpu@^0.4.10001"`.
+
 Provides webgpu to node
 
 [Dawn](https://dawn.googlesource.com/dawn) is an implementation of 
